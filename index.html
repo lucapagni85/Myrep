@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<title>Reperibilità – Settore Viabilità · V05.10</title>
+<title>Reperibilità – Settore Viabilità · V05.20</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Public+Sans:wght@400;500;600&family=Caveat:wght@500&display=swap" rel="stylesheet">
 <style>
@@ -239,7 +239,7 @@ table.reg.ro{min-width:1100px}.reg.ro td.nw{white-space:nowrap}
   <div class="brand"><h1>Servizio di reperibilità</h1><p>Provincia di Pisa · Settore Viabilità, Trasporti e Protezione Civile</p></div>
 </header>
 <main id="app"></main>
-<footer><span id="ver">Versione V05.10</span><span id="bz">I dati restano sul dispositivo</span></footer>
+<footer><span id="ver">Versione V05.20</span><span id="bz">I dati restano sul dispositivo</span></footer>
 
 <script>
 const ICONS={
@@ -287,6 +287,7 @@ function formAnag(){const t=turnoInfo(),T=['1 – 6','7 – 12','13 – 18','19 
    <label class="fld">Mese<select data-f="mese">${MESI.map((m,i)=>`<option value="${i+1}" ${D.mese==i+1?'selected':''}>${m[0].toUpperCase()+m.slice(1)}</option>`).join('')}</select></label>
    <label class="fld">Anno<input data-f="anno" type="number" min="2000" max="2100" value="${D.anno}"></label>
    <label class="fld">Turno (giorni del mese)<select data-f="turno">${T.map((x,i)=>`<option value="${i+1}" ${D.turno==i+1?'selected':''}>${x}</option>`).join('')}</select></label>
+   ${orarioFld()}
   </div>
   <div class="period" id="period">${periodo()}</div>
   <div class="ldr"><button class="btn sec" data-load="1">Carica un report salvato (.xlsx)</button><input type="file" id="ld" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></div>`;}
@@ -346,9 +347,9 @@ function festivi(y){const f=new Set();
     else if(r.t==='fissa'||(r.t==='anno'&&r.a===y))f.add(p2(r.m)+'-'+p2(r.g));});
   return f;}
 function giorni(){const t=turnoInfo(),F=festivi(t.y),out=[];
-  for(let d=t.a;d<=t.b;d++){const dow=new Date(t.y,t.m-1,d).getDay(),iso=`${t.y}-${p2(t.m)}-${p2(d)}`,ord=(dow===0||F.has(p2(t.m)+'-'+p2(d)))?0:360;
+  for(let d=t.a;d<=t.b;d++){const dow=new Date(t.y,t.m-1,d).getDay(),iso=`${t.y}-${p2(t.m)}-${p2(d)}`,ord=ordMin(D.orario,dow,F.has(p2(t.m)+'-'+p2(d)));
     const st=R.filter(r=>r.data===iso).reduce((a,r)=>a+(pm(r.dur||'')||0),0);
-    out.push({iso,lab:`${p2(d)}/${p2(t.m)}/${t.y}`,dow:['dom','lun','mar','mer','gio','ven','sab'][dow],fest:ord===0,st,rep:1440-st-ord});}
+    out.push({iso,lab:`${p2(d)}/${p2(t.m)}/${t.y}`,dow:['dom','lun','mar','mer','gio','ven','sab'][dow],fest:F.has(p2(t.m)+'-'+p2(d)),st,rep:1440-st-ord});}
   return out;}
 const val=(t,g)=>S[t][g.iso]!==undefined?S[t][g.iso]:(t==='rep'?g.rep:g.st);
 const totale=t=>giorni().filter(g=>!S.del[t].has(g.iso)).reduce((a,g)=>a+val(t,g),0);
@@ -396,10 +397,10 @@ function checks(){
     else if(dm!==null&&B>A&&dm!==(B===1439?1440:B)-A)add(i,'w',`La durata (${r.dur}) non coincide con l’intervallo tra chiamata e fine (${hm((B===1439?1440:B)-A)}).`);
     if(/^\d{4}-\d\d-\d\d$/.test(r.data)){
       const dt=new Date(r.data+'T00:00:00');
-      if(dt.getDay()!==0&&!festivi(dt.getFullYear()).has(r.data.slice(5))){
-        const ov=(x,y)=>A<y&&B>x;
-        if(ov(495,810))add(i,'b','L’intervento cade nell’orario di lavoro (8:15–13:30): non è ammesso in reperibilità.');
-        else if(ov(450,495)||ov(810,855))add(i,'w','L’intervento cade nella fascia di flessibilità dell’orario di lavoro (7:30–8:15 o 13:30–14:15): verifica.');
+      const oi=oraInfo(D.orario,dt.getDay(),festivi(dt.getFullYear()).has(r.data.slice(5)));
+      if(oi){const ov=(x,y)=>A<y&&B>x;
+        if(ov(oi.c[0],oi.c[1]))add(i,'b',`L’intervento cade nell’orario di lavoro (${oi.t}): non è ammesso in reperibilità.`);
+        else if(oi.x.some(([x,y])=>ov(x,y)))add(i,'w',`L’intervento cade nella fascia di flessibilità dell’orario di lavoro (${oi.tx}): verifica.`);
       }}
   });
   for(let j=0;j<R.length;j++)for(let i=0;i<j;i++){
@@ -425,7 +426,8 @@ function splitRow(i){
 function expBtn(){
   const C=checks(),bl=C.filter(c=>c.lvl==='b').length,dis=bl?'disabled':'';
   return `<div class="exp"><label class="fld">Revisione (rev)<input id="rev" value="${esc(D.rev)}" maxlength="2" inputmode="numeric" style="width:80px"></label>
-  <button class="btn" data-x="pdf" ${dis}>Esporta PDF</button><button class="btn sec" data-x="xlsx" ${dis}>Esporta Excel</button><button class="btn sec" data-x="mail" ${dis}>Invia al coordinatore</button></div>
+  <button class="btn" data-x="pdf" ${dis}>Esporta PDF</button><button class="btn sec" data-x="xlsx" ${dis}>Esporta Excel</button><button class="btn sec" data-x="mail" disabled title="Funzione momentaneamente non disponibile">Invia al coordinatore</button></div>
+  <p class="legend">L’invio per posta non è al momento disponibile: dopo aver esportato l’Excel, invialo con il tuo programma di posta.</p>
   ${bl?`<p class="legend">Esportazione disattivata: ${bl===1?'c’è 1 errore bloccante':`ci sono ${bl} errori bloccanti`} nel registro. <button class="rest" data-reg="1">Vai al registro</button></p>`:C.length?`<p class="legend">Ci sono ${C.length} avvisi non bloccanti nel registro: puoi comunque procedere.</p>`:''}`;
 }
 document.addEventListener('input',e=>{if(e.target.dataset&&e.target.dataset.r!==undefined)updateChecks();});
@@ -481,7 +483,7 @@ function buildWB(){
   blocco('rep');A.push([],[T2],['Nominativo dipendente','Giorni','Ore']);blocco('str');
   A.push([],['L’addetto',D.addetto,'','Firma'],['Il Coordinatore',D.coordinatore,'','Firma'],['Il Supervisore',D.supervisore,'','Firma']);
   const wsS=X.utils.aoa_to_sheet(A);wsS['!cols']=[{wch:26},{wch:16},{wch:10},{wch:12}];
-  const J={v:'V05.10',role:'addetto',D:{addetto:D.addetto,coordinatore:D.coordinatore,supervisore:D.supervisore,anno:D.anno,mese:D.mese,turno:D.turno,rev:D.rev},
+  const J={v:'V05.20',role:'addetto',D:{addetto:D.addetto,coordinatore:D.coordinatore,supervisore:D.supervisore,anno:D.anno,mese:D.mese,turno:D.turno,rev:D.rev,orario:D.orario},
     S:{rep:S.rep,str:S.str,del:{rep:[...S.del.rep],str:[...S.del.str]}}};
   const wb=X.utils.book_new();
   X.utils.book_append_sheet(wb,wsR,'Registro');X.utils.book_append_sheet(wb,wsS,'Riepilogo');
@@ -535,7 +537,7 @@ async function parseReport(f){
 async function caricaFile(f){
   if(!haXlsx())return;
   try{const x=await parseReport(f);
-    Object.assign(D,x.D);S.rep=x.S.rep||{};S.str=x.S.str||{};S.del.rep=new Set(x.S.del.rep||[]);S.del.str=new Set(x.S.del.str||[]);
+    applicaD(x.D,'addetto');S.rep=x.S.rep||{};S.str=x.S.str||{};S.del.rep=new Set(x.S.del.rep||[]);S.del.str=new Set(x.S.del.str||[]);
     R.length=0;x.R.forEach(r=>R.push(r));st.step=1;render();
   }catch(e){alert('File non riconosciuto: carica un report dell’addetto esportato da questo programma.');}
 }
@@ -545,7 +547,7 @@ document.addEventListener('click',e=>{
   if(e.target.closest('[data-load]')){$('#ld').click();return;}
   const x=e.target.closest('[data-x]');if(!x||x.disabled)return;
   if(checks().some(c=>c.lvl==='b'))return;
-  const k=x.dataset.x;
+  const k=x.dataset.x;if(k==='mail')return;
   if(k==='pdf')stampa();
   else if(k==='xlsx'){if(haXlsx())scarica(new Blob([xlsxBytes()],{type:XMIME}),fname()+'.xlsx');}
   else if(k==='mail')inviaMail();
@@ -584,7 +586,8 @@ function formCoord(){const t=turnoInfo(),T=['1 – 6','7 – 12','13 – 18','19
   <div class="form">${fld('coordinatore','Coordinatore')}${fld('supervisore','Supervisore')}
    <label class="fld">Mese<select data-f="mese">${MESI.map((m,i)=>`<option value="${i+1}" ${D.mese==i+1?'selected':''}>${m[0].toUpperCase()+m.slice(1)}</option>`).join('')}</select></label>
    <label class="fld">Anno<input data-f="anno" type="number" min="2000" max="2100" value="${D.anno}"></label>
-   <label class="fld">Turno (giorni del mese)<select data-f="turno">${T.map((x,i)=>`<option value="${i+1}" ${D.turno==i+1?'selected':''}>${x}</option>`).join('')}</select></label></div>
+   <label class="fld">Turno (giorni del mese)<select data-f="turno">${T.map((x,i)=>`<option value="${i+1}" ${D.turno==i+1?'selected':''}>${x}</option>`).join('')}</select></label>
+   ${orarioFld()}</div>
   <div class="period" id="period">${periodo()}</div>
   <h4 class="sub">Addetti del turno (compreso il vice)</h4><div id="alist">${alistHTML()}</div><div id="awarn">${warnHTML()}</div>
   <div class="ldr"><button class="btn sec" data-loadc="1">Carica un report salvato del coordinatore (.xlsx)</button><input type="file" id="ldc" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></div>`;}
@@ -606,7 +609,7 @@ document.addEventListener('click',e=>{const t=e.target;
   const dl=t.closest('[data-ca-del]');
   if(dl){C.addetti.splice(+dl.dataset.caDel,1);if(!C.addetti.length)C.addetti.push({nome:'',rep:null,file:'',visto:''});redrawAll();refresh();}
 });
-/* ---- Registro del coordinatore (V05.10) ---- */
+/* ---- Registro del coordinatore (V05.20) ---- */
 const RC=[];
 const COLC=[
  ['n','N° evento','text',64],['data','Data','date',135],['oc','Ora chiamata','time',100],
@@ -661,11 +664,11 @@ document.addEventListener('click',e=>{
   const d=e.target.closest('[data-gr-del]');
   if(d&&confirm('Eliminare questa segnalazione?')){RC.splice(+d.dataset.grDel,1);redrawRC();}
 });
-/* ---- Riepilogo del coordinatore (V05.10) ---- */
+/* ---- Riepilogo del coordinatore (V05.20) ---- */
 const SC={rep:{},str:{},del:{rep:new Set(),str:new Set()}};
 const ORDC=[0,360,540,360,540,360,0];
 function giorniC(){const t=turnoInfo(),F=festivi(t.y),out=[];
-  for(let d=t.a;d<=t.b;d++){const dow=new Date(t.y,t.m-1,d).getDay(),iso=`${t.y}-${p2(t.m)}-${p2(d)}`,fest=F.has(p2(t.m)+'-'+p2(d)),ord=fest?0:ORDC[dow];
+  for(let d=t.a;d<=t.b;d++){const dow=new Date(t.y,t.m-1,d).getDay(),iso=`${t.y}-${p2(t.m)}-${p2(d)}`,fest=F.has(p2(t.m)+'-'+p2(d)),ord=ordMin(D.orario,dow,fest);
     const st=RC.filter(r=>r.data===iso).reduce((a,r)=>a+(pm(r.dur||'')||0),0);
     out.push({iso,lab:`${p2(d)}/${p2(t.m)}/${t.y}`,dow:['dom','lun','mar','mer','gio','ven','sab'][dow],fest,ord,st,rep:1440-st-ord});}
   return out;}
@@ -706,13 +709,13 @@ document.addEventListener('click',e=>{
   else if(dd){const [t,d]=dd.dataset.cdd.split('|');SC.del[t].add(d);redrawRiepC();}
   else if(rs){SC.del[rs.dataset.crest].clear();redrawRiepC();}
 });
-/* ---- Visualizzazione e visto dei report degli addetti (V05.10) ---- */
+/* ---- Visualizzazione e visto dei report degli addetti (V05.20) ---- */
 const fmtD=s=>s?s.split('-').reverse().join('/'):'';
 const oggi=()=>{const d=new Date();return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;};
 function giorniRep(x){const Dx=x.D,y=+Dx.anno,m=+Dx.mese,last=new Date(y,m,0).getDate(),a=[1,7,13,19,25][Dx.turno-1],b=Dx.turno<5?a+5:last,F=festivi(y),out=[];
-  for(let d=a;d<=b;d++){const dow=new Date(y,m-1,d).getDay(),iso=`${y}-${p2(m)}-${p2(d)}`,ord=(dow===0||F.has(p2(m)+'-'+p2(d)))?0:360;
+  for(let d=a;d<=b;d++){const dow=new Date(y,m-1,d).getDay(),iso=`${y}-${p2(m)}-${p2(d)}`,ord=ordMin(Dx.orario||'6',dow,F.has(p2(m)+'-'+p2(d)));
     const s=x.R.filter(r=>r.data===iso).reduce((t,r)=>t+(pm(r.dur||'')||0),0);
-    out.push({iso,lab:`${p2(d)}/${p2(m)}/${y}`,dow:['dom','lun','mar','mer','gio','ven','sab'][dow],fest:ord===0,st:s,rep:1440-s-ord});}
+    out.push({iso,lab:`${p2(d)}/${p2(m)}/${y}`,dow:['dom','lun','mar','mer','gio','ven','sab'][dow],fest:F.has(p2(m)+'-'+p2(d)),st:s,rep:1440-s-ord});}
   return out;}
 function roReg(x){
   if(!x.R.length)return '<div class="empty">Nessun intervento registrato.</div>';
@@ -743,7 +746,7 @@ document.addEventListener('click',e=>{const t=e.target;
   else if(t.closest('[data-vw-undo]')){a.visto='';showVW();redrawAlist();}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&VW>=0)closeVW();});
-/* ---- Controlli del registro del coordinatore (V05.10) ---- */
+/* ---- Controlli del registro del coordinatore (V05.20) ---- */
 function checksC(){
   const t=turnoInfo(),[a,b]=isoTurno(),out=[],eff=B=>B===1439?1440:B;
   const add=(i,l,m,fix)=>out.push({i,lvl:l,msg:m,fix});
@@ -763,8 +766,8 @@ function checksC(){
     else if(ar!=null&&ar>eff(B))add(i,'w','L’orario di arrivo è successivo alla chiusura.');
     if(/^\d{4}-\d\d-\d\d$/.test(r.data)){
       const dt=new Date(r.data+'T00:00:00'),dw=dt.getDay();
-      if(dw>=1&&dw<=5&&!festivi(dt.getFullYear()).has(r.data.slice(5))){
-        const f=(dw===2||dw===4)?{c:[540,1020],x:[[450,540],[1020,1110]],t:'9:00–17:00',tx:'7:30–9:00 o 17:00–18:30'}:{c:[540,810],x:[[450,540],[810,900]],t:'9:00–13:30',tx:'7:30–9:00 o 13:30–15:00'};
+      const f=oraInfo(D.orario,dw,festivi(dt.getFullYear()).has(r.data.slice(5)));
+      if(f){
         const ov=(x,y)=>A<y&&B>x;
         /* impegno 0:00 = intervento svolto solo dall'addetto: nessun controllo sull'orario; impegno vuoto o non valido: niente errore bloccante */
         if(dm===0){}
@@ -812,7 +815,7 @@ document.addEventListener('click',e=>{
   if(sp)splitRowC(+sp.dataset.csplit);
   else if(g){const tr=document.querySelector(`.reg tbody tr:nth-child(${+g.dataset.gotoc+1})`);if(tr){tr.scrollIntoView({behavior:'smooth',block:'center'});const q=tr.querySelector('input,textarea,select');if(q)q.focus({preventScroll:true});}}
 });
-/* ---- Esportazione del coordinatore (V05.10) ---- */
+/* ---- Esportazione del coordinatore (V05.20) ---- */
 const addTxt=r=>[...(r.add||[]),...((r.altri||'').trim()?[r.altri.trim()]:[])].join(', ');
 const revS=v=>String(v||'0').padStart(2,'0');
 const fnameC=()=>{const t=turnoInfo();return `REP_COORD_${p2(t.m)}_${p2(t.a)}-${p2(t.b)}_${cogn(D.coordinatore)}_rev${revS(D.rev)}`;};
@@ -866,7 +869,7 @@ function buildWBC(){
     const rp=datiRiepRep(x,'rep'),rs=datiRiepRep(x,'str');
     X.utils.book_append_sheet(wb,w,'Reg'+sfx);
     X.utils.book_append_sheet(wb,wsRiepGen('addetto',x.D,nome,rp.rows,rp.tot,rs.rows,rs.tot,[['L’addetto',nome],['Il Coordinatore',D.coordinatore,a.visto?'Firma · visto il '+fd(a.visto):'Firma'],['Il Supervisore',D.supervisore]]),'Riep'+sfx);});
-  const J={v:'V05.10',role:'coordinatore',D:{coordinatore:D.coordinatore,supervisore:D.supervisore,anno:D.anno,mese:D.mese,turno:D.turno,rev:D.rev},
+  const J={v:'V05.20',role:'coordinatore',D:{coordinatore:D.coordinatore,supervisore:D.supervisore,anno:D.anno,mese:D.mese,turno:D.turno,rev:D.rev,orario:D.orario},
     RC:RC.map(r=>({...r,add:[...(r.add||[])]})),SC:{rep:SC.rep,str:SC.str,del:{rep:[...SC.del.rep],str:[...SC.del.str]}},
     C:C.addetti.map(a=>({nome:a.nome,file:a.file,visto:a.visto,rep:a.rep}))};
   X.utils.book_append_sheet(wb,X.utils.aoa_to_sheet(JSON.stringify(J).match(/[\s\S]{1,30000}/g).map(s=>[s])),'_dati');
@@ -879,7 +882,7 @@ async function caricaC(f){
   try{const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}),d=wb.Sheets['_dati'];if(!d)throw 0;
     const ks=Object.keys(d).filter(k=>/^A\d+$/.test(k)).sort((p,q)=>parseInt(p.slice(1))-parseInt(q.slice(1)));
     const J=JSON.parse(ks.map(k=>d[k].v).join(''));if(J.role!=='coordinatore')throw 1;
-    Object.assign(D,J.D);
+    applicaD(J.D,'coordinatore');
     RC.length=0;(J.RC||[]).forEach(r=>RC.push({...r,add:[...(r.add||[])]}));
     SC.rep=J.SC.rep||{};SC.str=J.SC.str||{};SC.del.rep=new Set(J.SC.del.rep||[]);SC.del.str=new Set(J.SC.del.str||[]);
     C.addetti.length=0;(J.C||[]).forEach(a=>C.addetti.push({nome:a.nome||'',file:a.file||'',visto:a.visto||'',rep:a.rep||null}));
@@ -889,14 +892,15 @@ async function caricaC(f){
 }
 function expBtnC(){const K=checksC(),bl=K.filter(c=>c.lvl==='b').length,dis=bl?'disabled':'';
   return `<div class="exp"><label class="fld">Revisione (rev)<input id="rev" value="${esc(D.rev)}" maxlength="2" inputmode="numeric" style="width:80px"></label>
-  <button class="btn" data-xc="pdf" ${dis}>Esporta PDF</button><button class="btn sec" data-xc="xlsx" ${dis}>Esporta Excel</button><button class="btn sec" data-xc="mail" ${dis}>Invia al supervisore</button></div>
+  <button class="btn" data-xc="pdf" ${dis}>Esporta PDF</button><button class="btn sec" data-xc="xlsx" ${dis}>Esporta Excel</button><button class="btn sec" data-xc="mail" disabled title="Funzione momentaneamente non disponibile">Invia al supervisore</button></div>
+  <p class="legend">L’invio per posta non è al momento disponibile: dopo aver esportato l’Excel, invialo con il tuo programma di posta.</p>
   ${bl?`<p class="legend">Esportazione disattivata: ${bl===1?'c’è 1 errore bloccante':`ci sono ${bl} errori bloccanti`} nel registro. <button class="rest" data-reg="1">Vai al registro</button></p>`:K.length?`<p class="legend">${K.length===1?'C’è 1 avviso non bloccante':'Ci sono '+K.length+' avvisi non bloccanti'} nel registro: puoi comunque procedere.</p>`:''}`;}
 document.addEventListener('change',e=>{if(e.target.id==='ldc'&&e.target.files[0]){caricaC(e.target.files[0]);e.target.value='';}});
 document.addEventListener('click',e=>{
   if(e.target.closest('[data-loadc]')){$('#ldc').click();return;}
   const x=e.target.closest('[data-xc]');if(!x||x.disabled)return;
   if(checksC().some(c=>c.lvl==='b'))return;
-  const k=x.dataset.xc;
+  const k=x.dataset.xc;if(k==='mail')return;
   if(k==='pdf')stampaC();
   else if(k==='xlsx'){if(haXlsx())scarica(new Blob([xlsxBytesC()],{type:XMIME}),fnameC()+'.xlsx');}
   else if(k==='mail')inviaMailC();
@@ -951,16 +955,9 @@ function flow(){
    nella cartella «modelli», accanto a questo programma.
    ===================================================================== */
 const HELP_DOCS=[
- {gruppo:'Manuali',titolo:'Manuale d’uso del programma',desc:'Guida alla compilazione dei report per tutti i ruoli.',file:'modelli/manuale_programma.pdf'},
- {gruppo:'Manuali',titolo:'Guida rapida per l’addetto',desc:'Registro degli interventi e riepilogo del turno.',file:'modelli/guida_addetto.pdf'},
- {gruppo:'Manuali',titolo:'Guida rapida per il coordinatore',desc:'Registro delle segnalazioni, visto dei report e invio al supervisore.',file:'modelli/guida_coordinatore.pdf'},
- {gruppo:'Manuali',titolo:'Guida rapida per il supervisore',desc:'Registro, quadro del turno ed esportazione completa.',file:'modelli/guida_supervisore.pdf'},
- {gruppo:'Regolamento',titolo:'Funzionamento del servizio di reperibilità (sintesi)',desc:'Ruoli, turni e regole di calcolo. Sostituibile con il regolamento ufficiale.',file:'modelli/regolamento_reperibilita.pdf'},
- {gruppo:'Altri documenti',titolo:'Modello di report dell’addetto',desc:'Modulo di riferimento in formato cartaceo.',file:'modelli/modello_addetto.pdf'},
- {gruppo:'Altri documenti',titolo:'Modello di report del coordinatore',desc:'Modulo di riferimento in formato cartaceo.',file:'modelli/modello_coordinatore.pdf'},
- {gruppo:'Altri documenti',titolo:'Modello di report del supervisore',desc:'Modulo di riferimento in formato cartaceo.',file:'modelli/modello_supervisore.pdf'}
+ {gruppo:'Manuale',titolo:'Manuale d’uso del programma',desc:'Guida completa alla compilazione dei report per addetto, coordinatore e supervisore.',file:'modelli/manuale_programma.pdf'}
 ];
-/* ---- Rubrica: integrata nel programma, sostituibile con un file Excel (V05.10) ---- */
+/* ---- Rubrica: integrata nel programma, sostituibile con un file Excel (V05.20) ---- */
 const RUBRICA_DEF=RUBRICA.map(r=>r.slice()),RUBR={fonte:'rubrica integrata nel programma'};
 function rubDaRighe(rows){const out=[];let sc=0;
   rows.forEach(o=>{const k={};Object.keys(o).forEach(x=>k[String(x).trim().toLowerCase()]=o[x]);
@@ -999,7 +996,7 @@ function help(){
     <div class="db"><a class="btn sm" href="${esc(d.file)}" target="_blank" rel="noopener">Apri</a><a class="btn sec sm" href="${esc(d.file)}" download>Scarica</a></div></div>`).join('')}</section>`;
   $('#app').innerHTML=`
    <button class="back" data-go="home">← Torna alla schermata iniziale</button>
-   <h2 class="role-title">Help</h2><p class="role-sub">Documenti di supporto per l’uso del programma e del servizio.</p>
+   <h2 class="role-title">Help</h2><p class="role-sub">Il manuale d’uso del programma e la gestione della rubrica.</p>
    <div class="docs">${gruppi.map(box).join('')}
    <section class="panel"><h3>Rubrica</h3><p class="n">Nominativi e indirizzi email usati dai menu dei nomi e dalla preparazione delle mail. In uso: <b>${esc(RUBR.fonte)}</b> · ${RUBRICA.length} nominativi.</p>
     <div class="vwb"><button class="btn sm" data-rub-load="1">Carica rubrica da Excel…</button><button class="btn sec sm" data-rub-modello="1">Scarica il modello Excel</button><button class="btn sec sm" data-rub-reset="1">Torna alla rubrica integrata</button><input type="file" id="rubfile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></div>
@@ -1024,6 +1021,7 @@ function histSync(){const k=st.view+'|'+st.role+'|'+st.step,primo=histSync.k===u
   try{(primo?history.replaceState:history.pushState).call(history,{st:{view:st.view,role:st.role,step:st.step}},'');}catch(e){}}
 window.addEventListener('popstate',e=>{if(e.state&&e.state.st){bzSalva();st={...e.state.st};histSync.k=st.view+'|'+st.role+'|'+st.step;render();}});
 function render(){
+  if(st.view==='role'&&D.orarioRole!==st.role){D.orario=ORA_SCELTA[st.role];D.orarioRole=st.role;}
   ({home,flow,help})[st.view==='role'?'flow':st.view]();
   if(st.view==='role'&&st.role==='addetto'&&st.step===1)updateChecks();
   if(st.view==='role'&&st.role==='coordinatore'&&st.step===1)updateChecksC();
@@ -1041,7 +1039,7 @@ document.addEventListener('click',e=>{
     render();}
   else if(n&&!n.disabled){st.step=Math.max(0,Math.min(2,st.step+ +n.dataset.step));render();}
 });
-/* ---- Esportazione del supervisore (V05.10) ---- */
+/* ---- Esportazione del supervisore (V05.20) ---- */
 const fnameS=(c)=>{const t=turnoInfo();return `REP_SUP_${p2(t.m)}_${p2(t.a)}-${p2(t.b)}_${cogn(D.supervisore)}_rev${revS(D.rev)}${c?'_completo':''}`;};
 const CG_C=[3.5,6,4.5,6.5,4.5,3.5,8,7.5,7.5,5.5,5.5,6.5,5.5,5.5,7,5.5,7.5],CG_S=[3.5,6,4.5,8,5,3.5,11,6,7,6.5,6.5,17,6.5,9];
 const colgrp=a=>'<colgroup>'+a.map(w=>`<col style="width:${w}%">`).join('')+'</colgroup>';
@@ -1093,7 +1091,7 @@ function buildWBS(completo){
     const rp=datiRiepCoordJ(J,'rep'),rs=datiRiepCoordJ(J,'str');
     X.utils.book_append_sheet(wb,wsRiepGen('coordinatore',{anno:J.D.anno,mese:J.D.mese,rev:J.D.rev},cn,rp.rows,rp.tot,rs.rows,rs.tot,[['Il Coordinatore',cn],['Il Supervisore',D.supervisore,SV.visto?'Firma · visto il '+fd(SV.visto):'Firma']]),'Riep_Coord');
     SV.addetti.filter(a=>a.rep).forEach((a,k)=>foglioAddetto(wb,a.rep,a.rep.D.addetto||a.nome,(k+1)+'_'+cogn(a.rep.D.addetto||a.nome).slice(0,18),cn,a.vistoC,a.visto));}
-  const J2={v:'V05.10',role:'supervisore',D:{supervisore:D.supervisore,coordinatore:D.coordinatore,anno:D.anno,mese:D.mese,turno:D.turno,rev:D.rev},
+  const J2={v:'V05.20',role:'supervisore',D:{supervisore:D.supervisore,coordinatore:D.coordinatore,anno:D.anno,mese:D.mese,turno:D.turno,rev:D.rev,orario:D.orario},
     RS:RS.map(r=>({...r})),SSC:{rep:SSC.rep,str:SSC.str,del:{rep:[...SSC.del.rep],str:[...SSC.del.str]}},SV:{coord:SV.coord,file:SV.file,visto:SV.visto,addetti:SV.addetti}};
   X.utils.book_append_sheet(wb,X.utils.aoa_to_sheet(JSON.stringify(J2).match(/[\s\S]{1,30000}/g).map(s=>[s])),'_dati');
   wb.Workbook={Sheets:wb.SheetNames.map(n=>n==='_dati'?{Hidden:1}:{})};
@@ -1105,7 +1103,7 @@ async function caricaS(f){
   try{const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}),d=wb.Sheets['_dati'];if(!d)throw 0;
     const ks=Object.keys(d).filter(k=>/^A\d+$/.test(k)).sort((p,q)=>parseInt(p.slice(1))-parseInt(q.slice(1)));
     const J=JSON.parse(ks.map(k=>d[k].v).join(''));if(J.role!=='supervisore')throw 1;
-    Object.assign(D,J.D);
+    applicaD(J.D,'supervisore');
     RS.length=0;(J.RS||[]).forEach(r=>RS.push(r));
     SSC.rep=J.SSC.rep||{};SSC.str=J.SSC.str||{};SSC.del.rep=new Set(J.SSC.del.rep||[]);SSC.del.str=new Set(J.SSC.del.str||[]);
     SV.coord=J.SV.coord||null;SV.file=J.SV.file||'';SV.visto=J.SV.visto||'';SV.addetti=J.SV.addetti||[];
@@ -1127,7 +1125,7 @@ document.addEventListener('click',e=>{
   if(k.startsWith('pdf'))stampaS(c);
   else if(haXlsx())scarica(new Blob([xlsxBytesS(c)],{type:XMIME}),fnameS(c)+'.xlsx');
 });
-/* ---- Controlli del registro del supervisore (V05.10) ---- */
+/* ---- Controlli del registro del supervisore (V05.20) ---- */
 function checksS(){
   const t=turnoInfo(),[a,b]=isoTurno(),out=[],eff=B=>B===1439?1440:B;
   const add=(i,l,m,fix)=>out.push({i,lvl:l,msg:m,fix});
@@ -1149,8 +1147,8 @@ function checksS(){
     else if(ar!=null&&ar>eff(B))add(i,'w','L’orario di arrivo è successivo alla chiusura.');
     if(/^\d{4}-\d\d-\d\d$/.test(r.data)){
       const dt=new Date(r.data+'T00:00:00'),dw=dt.getDay();
-      if(dw>=1&&dw<=5&&!festivi(dt.getFullYear()).has(r.data.slice(5))){
-        const f=(dw===2||dw===4)?{c:[540,1020],x:[[450,540],[1020,1110]],t:'9:00–17:00',tx:'7:30–9:00 o 17:00–18:30'}:{c:[540,810],x:[[450,540],[810,900]],t:'9:00–13:30',tx:'7:30–9:00 o 13:30–15:00'};
+      const f=oraInfo(D.orario,dw,festivi(dt.getFullYear()).has(r.data.slice(5)));
+      if(f){
         const ov=(x,y)=>A<y&&B>x;
         if(dm===0){}
         else if(ov(f.c[0],f.c[1])){if(dm!==null)add(i,'b',`L’intervento cade nell’orario di lavoro certo (${f.t}): il supervisore non può segnare ore di impegno in questa fascia. Se non ha svolto attività, inserisci 0:00.`);}
@@ -1194,10 +1192,10 @@ document.addEventListener('click',e=>{
   if(sp)splitRowS(+sp.dataset.ssplit);
   else if(g){const tr=document.querySelector(`.reg tbody tr:nth-child(${+g.dataset.gotos+1})`);if(tr){tr.scrollIntoView({behavior:'smooth',block:'center'});const q=tr.querySelector('input,textarea,select');if(q)q.focus({preventScroll:true});}}
 });
-/* ---- Riepilogo del supervisore e quadro del turno (V05.10) ---- */
+/* ---- Riepilogo del supervisore e quadro del turno (V05.20) ---- */
 const SSC={rep:{},str:{},del:{rep:new Set(),str:new Set()}};
 function giorniS(){const t=turnoInfo(),F=festivi(t.y),out=[];
-  for(let d=t.a;d<=t.b;d++){const dow=new Date(t.y,t.m-1,d).getDay(),iso=`${t.y}-${p2(t.m)}-${p2(d)}`,fest=F.has(p2(t.m)+'-'+p2(d)),ord=fest?0:ORDC[dow];
+  for(let d=t.a;d<=t.b;d++){const dow=new Date(t.y,t.m-1,d).getDay(),iso=`${t.y}-${p2(t.m)}-${p2(d)}`,fest=F.has(p2(t.m)+'-'+p2(d)),ord=ordMin(D.orario,dow,fest);
     const st=RS.filter(r=>r.data===iso).reduce((a,r)=>a+(pm(r.dur||'')||0),0);
     out.push({iso,lab:`${p2(d)}/${p2(t.m)}/${t.y}`,dow:['dom','lun','mar','mer','gio','ven','sab'][dow],fest,ord,st,rep:1440-st-ord});}
   return out;}
@@ -1252,7 +1250,7 @@ document.addEventListener('click',e=>{
   else if(dd){const [t,d]=dd.dataset.vsdd.split('|');SSC.del[t].add(d);redrawRiepS();}
   else if(rs){SSC.del[rs.dataset.vsrest].clear();redrawRiepS();}
 });
-/* ---- Registro del supervisore (V05.10) ---- */
+/* ---- Registro del supervisore (V05.20) ---- */
 const RS=[];
 const COLS_S=[
  ['n','N° evento','text',64],['data','Data','date',135],['oc','Ora chiamata','time',100],
@@ -1295,10 +1293,10 @@ document.addEventListener('click',e=>{
   const d=e.target.closest('[data-sr-del]');
   if(d&&confirm('Eliminare questo intervento?')){RS.splice(+d.dataset.srDel,1);redrawRS();}
 });
-/* ---- Scheda Supervisore: anagrafica, report del coordinatore, visto (V05.10) ---- */
+/* ---- Scheda Supervisore: anagrafica, report del coordinatore, visto (V05.20) ---- */
 const SV={coord:null,file:'',visto:'',addetti:[]};
 function giorniCoordJ(J){const Dx=J.D,y=+Dx.anno,m=+Dx.mese,last=new Date(y,m,0).getDate(),a=[1,7,13,19,25][Dx.turno-1],b=Dx.turno<5?a+5:last,F=festivi(y),out=[];
-  for(let d=a;d<=b;d++){const dow=new Date(y,m-1,d).getDay(),iso=`${y}-${p2(m)}-${p2(d)}`,ord=F.has(p2(m)+'-'+p2(d))?0:ORDC[dow];
+  for(let d=a;d<=b;d++){const dow=new Date(y,m-1,d).getDay(),iso=`${y}-${p2(m)}-${p2(d)}`,ord=ordMin(J.D.orario||'5',dow,F.has(p2(m)+'-'+p2(d)));
     const s=(J.RC||[]).filter(r=>r.data===iso).reduce((t,r)=>t+(pm(r.dur||'')||0),0);
     out.push({iso,lab:`${p2(d)}/${p2(m)}/${y}`,rep:1440-s-ord,st:s});}
   return out;}
@@ -1315,7 +1313,8 @@ function formSup(){const t=turnoInfo(),T=['1 – 6','7 – 12','13 – 18','19 �
   <div class="form">${fld('supervisore','Supervisore')}${fld('coordinatore','Coordinatore')}
    <label class="fld">Mese<select data-f="mese">${MESI.map((m,i)=>`<option value="${i+1}" ${D.mese==i+1?'selected':''}>${m[0].toUpperCase()+m.slice(1)}</option>`).join('')}</select></label>
    <label class="fld">Anno<input data-f="anno" type="number" min="2000" max="2100" value="${D.anno}"></label>
-   <label class="fld">Turno (giorni del mese)<select data-f="turno">${T.map((x,i)=>`<option value="${i+1}" ${D.turno==i+1?'selected':''}>${x}</option>`).join('')}</select></label></div>
+   <label class="fld">Turno (giorni del mese)<select data-f="turno">${T.map((x,i)=>`<option value="${i+1}" ${D.turno==i+1?'selected':''}>${x}</option>`).join('')}</select></label>
+   ${orarioFld()}</div>
   <div class="period" id="period">${periodo()}</div>
   <div id="svbox">${svBoxHTML()}</div>
   <div class="ldr"><button class="btn sec" data-loadsv="1">Carica un report salvato del supervisore (.xlsx)</button><input type="file" id="ldsv" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden></div>`;}
@@ -1376,9 +1375,25 @@ document.addEventListener('click',e=>{const t=e.target;
 document.addEventListener('change',e=>{if(e.target.id==='svf'&&e.target.files[0]){svCarica(e.target.files[0]);e.target.value='';}});
 document.addEventListener('input',e=>{if(st.role==='supervisore'&&e.target.dataset&&e.target.dataset.f){const w=$('#svwarn');if(w)w.innerHTML=svWarnHTML();}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&SVW)svVwClose();});
-/* ---- Calendario festività (V05.10): giorni rossi del calendario, integrati nel programma ---- */
+/* ---- Calendario festività (V05.20): giorni rossi del calendario, integrati nel programma ---- */
 const FEST={regole:[[1,1],[6,1],[25,4],[1,5],[2,6],[17,6],[15,8],[1,11],[8,12],[25,12],[26,12]].map(([g,m])=>({t:'fissa',g,m})).concat([{t:'pasquetta'}])};
-/* ---- Salvataggio automatico della bozza (V05.10) ---- */
+/* ---- Tipologia orario: 5 o 6 giorni (V05.20) ----
+   5 giorni: lun-mer-ven 6 ore (7:30–13:30), mar-gio 9 ore (7:30–17:00), sabato e domenica 0 ore; flessibilità di 1,5 ore in avanti.
+   6 giorni: da lunedì a sabato 6 ore (7:30–13:30); flessibilità di 45 minuti in avanti. Domenica e festivi: 0 ore. */
+const ORA_DEF={addetto:'6',coordinatore:'5',supervisore:'5'};
+const ORA_SCELTA={...ORA_DEF};
+function oraInfo(tipo,dow,fest){
+  if(fest||dow===0)return null;
+  if(String(tipo)==='6')return dow>=1&&dow<=6?{ord:360,c:[495,810],x:[[450,495],[810,855]],t:'8:15–13:30',tx:'7:30–8:15 o 13:30–14:15'}:null;
+  if(dow===6)return null;
+  if(dow===2||dow===4)return {ord:540,c:[540,1020],x:[[450,540],[1020,1110]],t:'9:00–17:00',tx:'7:30–9:00 o 17:00–18:30'};
+  return {ord:360,c:[540,810],x:[[450,540],[810,900]],t:'9:00–13:30',tx:'7:30–9:00 o 13:30–15:00'};}
+const ordMin=(tipo,dow,fest)=>{const o=oraInfo(tipo,dow,fest);return o?o.ord:0;};
+const orarioFld=()=>`<label class="fld">Tipologia orario<select data-f="orario"><option value="5" ${D.orario==='5'?'selected':''}>5 giorni</option><option value="6" ${D.orario==='6'?'selected':''}>6 giorni</option></select>
+  <small class="hint">5 giorni: lun-mer-ven 6 ore, mar-gio 9 ore · 6 giorni: da lunedì a sabato 6 ore</small></label>`;
+function applicaD(s,role){Object.assign(D,s);D.orario=String(s.orario||ORA_DEF[role]);D.orarioRole=role;ORA_SCELTA[role]=D.orario;}
+document.addEventListener('input',e=>{const el=e.target;if(el.dataset&&el.dataset.f==='orario'&&st.role){ORA_SCELTA[st.role]=el.value;D.orarioRole=st.role;}});
+/* ---- Salvataggio automatico della bozza (V05.20) ---- */
 const BZ_RUOLI=['addetto','coordinatore','supervisore'],BZ_NOME={addetto:'Addetto',coordinatore:'Coordinatore',supervisore:'Supervisore'};
 const bzKey=k=>'rep_bozza_'+k;
 function bzLeggi(k){try{const s=localStorage.getItem(bzKey(k));return s?JSON.parse(s):null;}catch(e){return null;}}
@@ -1409,7 +1424,7 @@ function bozzeHTML(){
   return l?`<div class="bozze">${l}</div>`:'';}
 function bzRipristina(k){const b=bzLeggi(k);if(!b||!b.data)return;const x=b.data;
   try{
-    Object.assign(D,x.D);
+    applicaD(x.D,k);
     if(k==='addetto'){R.length=0;x.R.forEach(r=>R.push(r));S.rep=x.S.rep||{};S.str=x.S.str||{};S.del.rep=new Set(x.S.del.rep||[]);S.del.str=new Set(x.S.del.str||[]);}
     else if(k==='supervisore'){Object.assign(SV,x.SV);RS.length=0;(x.RS||[]).forEach(r=>RS.push(r));
     if(x.SSC){SSC.rep=x.SSC.rep||{};SSC.str=x.SSC.str||{};SSC.del.rep=new Set(x.SSC.del.rep||[]);SSC.del.str=new Set(x.SSC.del.str||[]);}}
@@ -1432,9 +1447,9 @@ document.addEventListener('click',e=>{
 setInterval(bzSalva,2000);
 window.addEventListener('pagehide',bzSalva);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)bzSalva();});
-/* ---- App installabile e aggiornamenti (V05.10) ----
+/* ---- App installabile e aggiornamenti (V05.20) ----
    Numero di versione: cambiare APP_VERSION qui e VERSIONE nel file sw.js a ogni rilascio. */
-const APP_VERSION='V05.10';
+const APP_VERSION='V05.20';
 (()=>{const v=$('#ver');if(v)v.textContent='Versione '+APP_VERSION;document.title='Reperibilità – Settore Viabilità · '+APP_VERSION;})();
 if('serviceWorker' in navigator&&/^https?:/.test(location.protocol)){
   const aveva=!!navigator.serviceWorker.controller;

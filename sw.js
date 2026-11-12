@@ -1,6 +1,6 @@
-// Reperibilità – service worker · V05.10
+// Reperibilità – service worker · V05.20
 // A ogni rilascio cambiare VERSIONE (basta modificare anche un solo carattere del file perché i dispositivi rilevino l'aggiornamento).
-const VERSIONE='V05.10';
+const VERSIONE='V05.20';
 const CACHE='reperibilita-'+VERSIONE, CACHE_LIB='reperibilita-librerie', CACHE_MOD='reperibilita-modelli';
 const CORE=['./','index.html','manifest.webmanifest','icon-192.png','icon-512.png','icon-maskable-512.png','apple-touch-icon.png'];
 const LIB=['https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'];
